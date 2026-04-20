@@ -45,3 +45,6 @@ test-results/
 
 # OS
 Thumbs.db
+
+venv/
+ar.txt
