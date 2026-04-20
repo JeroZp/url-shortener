@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+*.log
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform.tfvars.example
+.terraform.lock.hcl
+crash.log
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Secrets
+.env
+.env.local
+*.pem
+aws-credentials.txt
+
+# Playwright
+playwright-report/
+test-results/
+
+# OS
+Thumbs.db
