@@ -64,12 +64,12 @@ def shorten(payload: ShortenRequest, request: Request, db: Session = Depends(get
     base = str(request.base_url).rstrip("/")
     return ShortenResponse(
         short_code=short_code,
-        short_url=f"{base}/{short_code}",
+        short_url=f"{base}/s/{short_code}",
         original_url=original,
     )
 
 
-@app.get("/{short_code}", tags=["Redirection"])
+@app.get("/s/{short_code}", tags=["Redirection"])
 def redirect(short_code: str, request: Request, db: Session = Depends(get_db)) -> RedirectResponse:
     # Reserve routes that not are short codes
     if short_code in ("health", "ready", "docs", "openapi.json", "redoc"):
