@@ -29,6 +29,7 @@ def test_db(monkeypatch):
 
     # Override get_db to use the test session
     from app import db as db_module
+
     monkeypatch.setattr(db_module, "engine", engine)
     monkeypatch.setattr(db_module, "SessionLocal", TestSession)
 
@@ -51,6 +52,7 @@ def fake_redis(monkeypatch):
     fake = fakeredis.FakeRedis(decode_responses=True)
     monkeypatch.setattr(cache, "redis_client", fake)
     import app.main
+
     monkeypatch.setattr(app.main, "redis_client", fake)
     yield fake
 
@@ -61,11 +63,14 @@ def client(test_db, fake_redis):
     with TestClient(app) as c:
         yield c
 
+
 @pytest.fixture(autouse=True)
 def override_health_checks(monkeypatch):
     """En tests, los health checks siempre retornan True."""
     from app import db as db_module
+
     monkeypatch.setattr(db_module, "check_db", lambda: True)
     import app.main
+
     monkeypatch.setattr(app.main, "check_db", lambda: True)
     monkeypatch.setattr(app.main, "check_redis", lambda: True)

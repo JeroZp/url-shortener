@@ -19,7 +19,12 @@ async def lifespan(_app: FastAPI):
     yield  # Run the application
 
 
-app = FastAPI(title="URL Shortener API", description="A simple URL shortener API built with FastAPI", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="URL Shortener API",
+    description="A simple URL shortener API built with FastAPI",
+    version="1.0.0",
+    lifespan=lifespan,
+)
 
 
 @app.get("/health", tags=["Health Check"])
@@ -69,14 +74,14 @@ def redirect(short_code: str, request: Request, db: Session = Depends(get_db)) -
     # Reserve routes that not are short codes
     if short_code in ("health", "ready", "docs", "openapi.json", "redoc"):
         raise HTTPException(status_code=404)
-    
+
     # Check cache first
     original = redis_client.get(f"url:{short_code}")
 
     record = db.query(ShortUrl).filter_by(short_code=short_code).first()
     if not record:
         raise HTTPException(status_code=404, detail="Short code not found")
-    
+
     if not original:
         original = record.original_url
         redis_client.setex(f"url:{short_code}", settings.cache_ttl_seconds, original)
@@ -97,13 +102,8 @@ def stats(short_code: str, db: Session = Depends(get_db)) -> StatsResponse:
     record = db.query(ShortUrl).filter_by(short_code=short_code).first()
     if not record:
         raise HTTPException(status_code=404, detail="Short code not found")
-    
-    last_click = (
-        db.query(Click)
-        .filter_by(short_url_id=record.id)
-        .order_by(Click.clicked_at.desc())
-        .first()
-    )
+
+    last_click = db.query(Click).filter_by(short_url_id=record.id).order_by(Click.clicked_at.desc()).first()
 
     return StatsResponse(
         short_code=record.short_code,
