@@ -20,7 +20,7 @@ def test_shorten_url_success(client, sample_url):
     assert "short_code" in data
     assert len(data["short_code"]) == 6
     assert data["original_url"] == sample_url
-    assert data["short_url"].endswith(data["short_code"])
+    assert data["short_url"].endswith(f"/s/{data['short_code']}")
 
 
 def test_shorten_url_invalid_returns_422(client):
@@ -39,13 +39,13 @@ def test_redirect_to_original_url(client, sample_url):
     short_code = create.json()["short_code"]
 
     # Test redirect
-    response = client.get(f"/{short_code}", follow_redirects=False)
+    response = client.get(f"/s/{short_code}", follow_redirects=False)
     assert response.status_code == 301
     assert response.headers["location"] == sample_url
 
 
 def test_redirect_unknown_code_returns_404(client):
-    response = client.get("/nonexistent", follow_redirects=False)
+    response = client.get("/s/nonexistent", follow_redirects=False)
     assert response.status_code == 404
 
 
@@ -56,7 +56,7 @@ def test_stats_returns_click_count(client, sample_url):
 
     # Make 3 clicks
     for _ in range(3):
-        client.get(f"/{short_code}", follow_redirects=False)
+        client.get(f"/s/{short_code}", follow_redirects=False)
 
     # Verify stats
     stats = client.get(f"/api/stats/{short_code}")
