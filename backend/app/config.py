@@ -9,4 +9,5 @@ class Settings(BaseSettings):
     short_code_length: int = 6
     cache_ttl_seconds: int = 3600
 
+
 settings = Settings()

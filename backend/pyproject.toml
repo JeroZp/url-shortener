@@ -1,13 +1,16 @@
 [tool.ruff]
-line-length = 100
+line-length = 120
 target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "C90", "N", "UP", "S"]
-ignore = ["S101"]  # permite asserts en tests
+ignore = [
+    "S101", # Allow asserts (necesary on tests)
+    "B008", # FastAPI use Depends() in args by design
+]  
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S"]  # tests pueden usar hardcoded values
+"tests/*" = ["S", "N806"]  # tests pueden usar hardcoded values
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
