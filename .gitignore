@@ -26,6 +26,7 @@ coverage/
 !terraform.tfvars.example
 .terraform.lock.hcl
 crash.log
+terraform.tfvars
 
 # IDEs
 .vscode/
