@@ -7,22 +7,22 @@ variable "environment" {
   type = string
   validation {
     condition     = contains(["staging", "production"], var.environment)
-    error_message = "El ambiente debe ser 'staging' o 'production'."
+    error_message = "environment must be 'staging' or 'production'."
   }
 }
 
 variable "vpc_id" {
-  description = "ID de la VPC (del módulo networking)"
+  description = "VPC ID (from the networking module)"
   type        = string
 }
 
 variable "public_subnet_ids" {
-  description = "IDs de las subnets públicas (del módulo networking)"
+  description = "IDs of the public subnets (from the networking module)"
   type        = list(string)
 }
 
 variable "alb_security_group_id" {
-  description = "ID del security group del ALB (del módulo networking)"
+  description = "ALB security group ID (from the networking module)"
   type        = string
 }
 

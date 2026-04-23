@@ -1,6 +1,6 @@
 # =============================================================================
 # LOADBALANCER MODULE — url-shortener
-# ALB + target groups blue/green para backend + target group frontend
+# ALB + blue/green target groups for backend + frontend target group
 # =============================================================================
 
 
@@ -99,7 +99,7 @@ resource "aws_lb_listener_rule" "backend_api" {
 
   condition {
     path_pattern {
-      values = ["/api/*", "/health", "/ready", "/docs", "/openapi.json"]
+      values = ["/api/*", "/s/*", "/health", "/ready", "/docs", "/openapi.json"]
     }
   }
 

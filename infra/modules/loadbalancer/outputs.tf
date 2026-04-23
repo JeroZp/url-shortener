@@ -3,12 +3,12 @@ output "alb_arn" {
 }
 
 output "alb_dns_name" {
-  description = "DNS público del ALB — usar este para acceder a la app"
+  description = "Public DNS of the ALB — use this to reach the app"
   value       = aws_lb.main.dns_name
 }
 
 output "listener_arn" {
-  description = "ARN del listener HTTP — necesario para el workflow de blue/green"
+  description = "HTTP listener ARN — required by the blue/green workflow"
   value       = aws_lb_listener.http.arn
 }
 

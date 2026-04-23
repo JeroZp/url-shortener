@@ -1,7 +1,7 @@
 # =============================================================================
 # DATABASE MODULE — url-shortener
 # RDS PostgreSQL 16 + ElastiCache Redis 7
-# Instancias t3.micro
+# t3.micro instances
 # =============================================================================
 
 resource "aws_db_subnet_group" "main" {

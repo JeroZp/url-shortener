@@ -1,7 +1,7 @@
 # =============================================================================
 # NETWORKING MODULE — url-shortener
-# VPC + subnets públicas + security groups
-# Sin NAT Gateway
+# VPC + public subnets + security groups
+# No NAT Gateway
 # =============================================================================
 
 resource "aws_vpc" "main" {
@@ -58,11 +58,11 @@ resource "aws_route_table_association" "public" {
 
 resource "aws_security_group" "alb" {
   name        = "${var.project}-${var.environment}-alb-sg"
-  description = "Security group para el Application Load Balancer"
+  description = "Security group for the Application Load Balancer"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description = "HTTP desde internet"
+    description = "HTTP from the internet"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
@@ -81,11 +81,11 @@ resource "aws_security_group" "alb" {
 
 resource "aws_security_group" "ecs_backend" {
   name        = "${var.project}-${var.environment}-ecs-backend-sg"
-  description = "Security group para las tasks del backend en ECS"
+  description = "Security group for backend ECS tasks"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "Tráfico del ALB al backend"
+    description     = "Traffic from the ALB to the backend"
     from_port       = 8000
     to_port         = 8000
     protocol        = "tcp"
@@ -104,11 +104,11 @@ resource "aws_security_group" "ecs_backend" {
 
 resource "aws_security_group" "ecs_frontend" {
   name        = "${var.project}-${var.environment}-ecs-frontend-sg"
-  description = "Security group para las tasks del frontend en ECS"
+  description = "Security group for frontend ECS tasks"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "Tráfico del ALB al frontend"
+    description     = "Traffic from the ALB to the frontend"
     from_port       = 80
     to_port         = 80
     protocol        = "tcp"
@@ -127,11 +127,11 @@ resource "aws_security_group" "ecs_frontend" {
 
 resource "aws_security_group" "rds" {
   name        = "${var.project}-${var.environment}-rds-sg"
-  description = "Security group para RDS PostgreSQL"
+  description = "Security group for RDS PostgreSQL"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "PostgreSQL desde el backend"
+    description     = "PostgreSQL from the backend"
     from_port       = 5432
     to_port         = 5432
     protocol        = "tcp"
@@ -150,11 +150,11 @@ resource "aws_security_group" "rds" {
 
 resource "aws_security_group" "redis" {
   name        = "${var.project}-${var.environment}-redis-sg"
-  description = "Security group para ElastiCache Redis"
+  description = "Security group for ElastiCache Redis"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "Redis desde el backend"
+    description     = "Redis from the backend"
     from_port       = 6379
     to_port         = 6379
     protocol        = "tcp"

@@ -7,39 +7,39 @@ variable "environment" {
   type = string
   validation {
     condition     = contains(["staging", "production"], var.environment)
-    error_message = "El ambiente debe ser 'staging' o 'production'."
+    error_message = "environment must be 'staging' or 'production'."
   }
 }
 
 variable "public_subnet_ids" {
-  description = "IDs de las subnets públicas (del módulo networking)"
+  description = "IDs of the public subnets (from the networking module)"
   type        = list(string)
 }
 
 variable "rds_security_group_id" {
-  description = "ID del security group de RDS (del módulo networking)"
+  description = "RDS security group ID (from the networking module)"
   type        = string
 }
 
 variable "redis_security_group_id" {
-  description = "ID del security group de Redis (del módulo networking)"
+  description = "Redis security group ID (from the networking module)"
   type        = string
 }
 
 variable "db_name" {
-  description = "Nombre de la base de datos"
+  description = "Database name"
   type        = string
   default     = "urlshortener"
 }
 
 variable "db_username" {
-  description = "Usuario de la base de datos"
+  description = "Database user"
   type        = string
   default     = "urlshortener"
 }
 
 variable "db_password" {
-  description = "Contraseña de la base de datos — pasar desde tfvars o secrets"
+  description = "Database password — pass from tfvars or secrets"
   type        = string
   sensitive   = true
 }

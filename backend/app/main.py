@@ -44,7 +44,7 @@ def ready() -> dict[str, object]:
 def shorten(payload: ShortenRequest, request: Request, db: Session = Depends(get_db)) -> ShortenResponse:
     original = str(payload.url)
 
-    # Try until 5 times if have a collision (extremely improbable with 62^6 combinations)
+    # Try up to 5 times on collision (extremely unlikely with 62^6 combinations)
     for _ in range(5):
         short_code = generate_short_code()
         existing = db.query(ShortUrl).filter_by(short_code=short_code).first()
@@ -71,7 +71,7 @@ def shorten(payload: ShortenRequest, request: Request, db: Session = Depends(get
 
 @app.get("/s/{short_code}", tags=["Redirection"])
 def redirect(short_code: str, request: Request, db: Session = Depends(get_db)) -> RedirectResponse:
-    # Reserve routes that not are short codes
+    # Reserve routes that are not short codes
     if short_code in ("health", "ready", "docs", "openapi.json", "redoc"):
         raise HTTPException(status_code=404)
 

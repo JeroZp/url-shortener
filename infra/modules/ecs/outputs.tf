@@ -21,3 +21,13 @@ output "backend_task_definition_arn" {
 output "frontend_task_definition_arn" {
   value = aws_ecs_task_definition.frontend.arn
 }
+
+output "backend_task_definition_family" {
+  description = "Backend task definition family (for update-service pointing at the latest revision)"
+  value       = aws_ecs_task_definition.backend.family
+}
+
+output "frontend_task_definition_family" {
+  description = "Frontend task definition family (for update-service pointing at the latest revision)"
+  value       = aws_ecs_task_definition.frontend.family
+}
