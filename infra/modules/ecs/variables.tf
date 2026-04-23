@@ -7,27 +7,27 @@ variable "environment" {
   type = string
   validation {
     condition     = contains(["staging", "production"], var.environment)
-    error_message = "El ambiente debe ser 'staging' o 'production'."
+    error_message = "environment must be 'staging' or 'production'."
   }
 }
 
 variable "lab_role_arn" {
-  description = "ARN del LabRole preexistente en AWS Academy"
+  description = "ARN of the preexisting AWS Academy LabRole"
   type        = string
 }
 
 variable "ecr_backend_url" {
-  description = "URL del repositorio ECR del backend (sin tag)"
+  description = "Backend ECR repository URL (without tag)"
   type        = string
 }
 
 variable "ecr_frontend_url" {
-  description = "URL del repositorio ECR del frontend (sin tag)"
+  description = "Frontend ECR repository URL (without tag)"
   type        = string
 }
 
 variable "image_tag" {
-  description = "Tag de la imagen Docker a desplegar"
+  description = "Docker image tag to deploy"
   type        = string
   default     = "latest"
 }
@@ -53,11 +53,11 @@ variable "frontend_target_group_arn" {
 }
 
 variable "alb_dns_name" {
-  description = "DNS del ALB — se inyecta al frontend como VITE_API_URL"
+  description = "ALB DNS — injected into the frontend as VITE_API_URL"
   type        = string
 }
 
-# --- Base de datos ---
+# --- Database ---
 variable "db_host" {
   type = string
 }
@@ -73,7 +73,7 @@ variable "db_username" {
 }
 
 variable "db_password_secret_arn" {
-  description = "ARN del secret en Secrets Manager con la contraseña de la DB"
+  description = "ARN of the Secrets Manager secret that holds the DB password"
   type        = string
 }
 

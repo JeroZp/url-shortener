@@ -1,36 +1,36 @@
 variable "db_password" {
-  description = "Contraseña de PostgreSQL"
+  description = "PostgreSQL password"
   type        = string
   sensitive   = true
 }
 
 variable "lab_role_arn" {
-  description = "ARN del LabRole de AWS Academy"
+  description = "ARN of the AWS Academy LabRole"
   type        = string
 }
 
 variable "ecr_backend_url" {
-  description = "URL del repositorio ECR del backend"
+  description = "Backend ECR repository URL"
   type        = string
 }
 
 variable "ecr_frontend_url" {
-  description = "URL del repositorio ECR del frontend"
+  description = "Frontend ECR repository URL"
   type        = string
 }
 
 variable "image_tag" {
-  description = "Tag de la imagen a desplegar"
+  description = "Image tag to deploy"
   type        = string
   default     = "latest"
 }
 
 variable "db_password_secret_arn" {
-  description = "ARN del secret en Secrets Manager con la contraseña de la DB"
+  description = "ARN of the Secrets Manager secret that holds the DB password"
   type        = string
 }
 
 variable "tf_state_bucket" {
-  description = "Nombre del bucket S3 para el remote state"
+  description = "Name of the S3 bucket used for remote state"
   type        = string
 }

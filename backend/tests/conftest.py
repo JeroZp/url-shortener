@@ -18,7 +18,7 @@ def sample_url() -> str:
 
 @pytest.fixture
 def test_db(monkeypatch):
-    """DB SQLite in-memory, aislada por test."""
+    """In-memory SQLite DB, isolated per test."""
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -66,7 +66,7 @@ def client(test_db, fake_redis):
 
 @pytest.fixture(autouse=True)
 def override_health_checks(monkeypatch):
-    """En tests, los health checks siempre retornan True."""
+    """In tests, health checks always return True."""
     from app import db as db_module
 
     monkeypatch.setattr(db_module, "check_db", lambda: True)

@@ -10,7 +10,7 @@ ignore = [
 ]  
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S", "N806"]  # tests pueden usar hardcoded values
+"tests/*" = ["S", "N806"]  # tests may use hardcoded values
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

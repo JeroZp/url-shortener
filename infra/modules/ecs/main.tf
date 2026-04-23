@@ -1,7 +1,7 @@
 # =============================================================================
 # ECS MODULE — url-shortener
-# Cluster + task definitions + services para backend y frontend
-# Usa LabRole preexistente
+# Cluster + task definitions + services for backend and frontend
+# Uses the preexisting LabRole
 # =============================================================================
 
 resource "aws_ecs_cluster" "main" {

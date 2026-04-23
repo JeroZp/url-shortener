@@ -20,5 +20,5 @@ def test_generate_short_code_uses_valid_alphabet():
 
 def test_generate_short_code_is_random():
     codes = {generate_short_code() for _ in range(100)}
-    # Con 6 chars y 62 opciones, 100 códigos deberían ser todos distintos
+    # With 6 chars and 62 options, 100 codes should all be distinct
     assert len(codes) == 100

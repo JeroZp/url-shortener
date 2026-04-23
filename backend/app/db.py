@@ -24,7 +24,7 @@ def init_db() -> None:
 
 
 def check_db() -> bool:
-    """Health check para /ready."""
+    """Health check for /ready."""
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))

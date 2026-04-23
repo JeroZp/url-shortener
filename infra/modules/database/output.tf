@@ -1,10 +1,10 @@
 output "db_endpoint" {
-  description = "Endpoint de conexión a RDS (host:port)"
+  description = "RDS connection endpoint (host:port)"
   value       = aws_db_instance.postgres.endpoint
 }
 
 output "db_host" {
-  description = "Host de RDS sin puerto"
+  description = "RDS host without port"
   value       = aws_db_instance.postgres.address
 }
 
@@ -17,7 +17,7 @@ output "db_username" {
 }
 
 output "redis_endpoint" {
-  description = "Endpoint de conexión a Redis"
+  description = "Redis connection endpoint"
   value       = aws_elasticache_cluster.redis.cache_nodes[0].address
 }
 
