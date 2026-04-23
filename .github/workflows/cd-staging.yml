@@ -171,7 +171,7 @@ jobs:
           TF_VAR_ecr_frontend_url: ${{ needs.build-and-push.outputs.ecr_frontend_url }}
           TF_VAR_image_tag: ${{ needs.build-and-push.outputs.image_tag }}
           TF_VAR_db_password_secret_arn: ${{ secrets.DB_PASSWORD_SECRET_ARN }}
-          TF_VAR_tf_state_bucket: url-shortener-tfstate-eafit-grupo3
+          TF_VAR_tf_state_bucket: url-shortener-tfstate-eafit-g3-v1
         run: terraform apply -auto-approve -input=false
 
       - name: Export terraform outputs

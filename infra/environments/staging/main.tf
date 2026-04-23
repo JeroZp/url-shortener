@@ -13,7 +13,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket = "url-shortener-tfstate-eafit-grupo3"
+    bucket = "url-shortener-tfstate-eafit-g3-v1"
     key    = "staging/terraform.tfstate"
     region = "us-east-1"
   }
