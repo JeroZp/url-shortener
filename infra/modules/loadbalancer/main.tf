@@ -99,7 +99,23 @@ resource "aws_lb_listener_rule" "backend_api" {
 
   condition {
     path_pattern {
-      values = ["/api/*", "/s/*", "/health", "/ready", "/docs", "/openapi.json"]
+      values = ["/api/*", "/s/*", "/docs", "/redoc", "/openapi.json"]
+    }
+  }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.backend_blue.arn
+  }
+}
+
+resource "aws_lb_listener_rule" "backend_health" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 110
+
+  condition {
+    path_pattern {
+      values = ["/health", "/ready"]
     }
   }
 
