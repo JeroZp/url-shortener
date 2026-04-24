@@ -72,6 +72,7 @@ module "ecs" {
   ecs_frontend_security_group_id = module.networking.ecs_frontend_security_group_id
   backend_blue_target_group_arn  = module.loadbalancer.backend_blue_target_group_arn
   backend_green_target_group_arn = module.loadbalancer.backend_green_target_group_arn
+  enable_backend_green           = true
   frontend_target_group_arn      = module.loadbalancer.frontend_target_group_arn
   alb_dns_name                   = module.loadbalancer.alb_dns_name
   db_host                        = module.database.db_host

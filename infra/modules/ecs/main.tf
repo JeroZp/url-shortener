@@ -177,7 +177,7 @@ resource "aws_ecs_service" "backend" {
 }
 
 resource "aws_ecs_service" "backend_green" {
-  count           = var.backend_green_target_group_arn != "" ? 1 : 0
+  count           = var.enable_backend_green ? 1 : 0
   name            = "${var.project}-${var.environment}-backend-green"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.backend.arn

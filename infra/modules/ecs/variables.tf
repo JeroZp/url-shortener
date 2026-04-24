@@ -54,6 +54,12 @@ variable "backend_green_target_group_arn" {
   default     = ""
 }
 
+variable "enable_backend_green" {
+  description = "Whether to create the green backend ECS service (must be known at plan time)"
+  type        = bool
+  default     = false
+}
+
 variable "frontend_target_group_arn" {
   type = string
 }
