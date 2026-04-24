@@ -222,6 +222,56 @@ jobs:
             --task-definition "$FAMILY" \
             --force-new-deployment >/dev/null
 
+      # --- Backend: ensure both TGs are registered with ALB ----------------
+      - name: Ensure both target groups are associated with ALB
+        env:
+          API_RULE: ${{ needs.terraform-apply.outputs.backend_api_rule_arn }}
+          HEALTH_RULE: ${{ needs.terraform-apply.outputs.backend_health_rule_arn }}
+          BLUE_TG: ${{ needs.terraform-apply.outputs.backend_blue_tg_arn }}
+          GREEN_TG: ${{ needs.terraform-apply.outputs.backend_green_tg_arn }}
+        run: |
+          set -euo pipefail
+
+          # Due to lifecycle { ignore_changes = [action] } in Terraform, the
+          # listener rules may have drifted to reference only one TG. Re-register
+          # both TGs so ECS can successfully deploy to either service.
+          for RULE_ARN in "$API_RULE" "$HEALTH_RULE"; do
+            TG_COUNT=$(aws elbv2 describe-rules \
+              --rule-arns "$RULE_ARN" \
+              --query 'length(Rules[0].Actions[0].ForwardConfig.TargetGroups)' \
+              --output text 2>/dev/null || echo "0")
+
+            if [ "$TG_COUNT" != "2" ]; then
+              echo "Rule $RULE_ARN has $TG_COUNT TGs, re-registering both..."
+              # Detect which TG currently has traffic
+              ACTIVE=$(aws elbv2 describe-rules \
+                --rule-arns "$RULE_ARN" \
+                --query 'Rules[0].Actions[0].ForwardConfig.TargetGroups[?Weight>`0`].TargetGroupArn | [0]' \
+                --output text 2>/dev/null || echo "")
+
+              if [ "$ACTIVE" = "$GREEN_TG" ]; then
+                W_BLUE=0; W_GREEN=100
+              else
+                W_BLUE=100; W_GREEN=0
+              fi
+
+              aws elbv2 modify-rule \
+                --rule-arn "$RULE_ARN" \
+                --actions '[{
+                  "Type": "forward",
+                  "ForwardConfig": {
+                    "TargetGroups": [
+                      {"TargetGroupArn": "'"$BLUE_TG"'", "Weight": '"$W_BLUE"'},
+                      {"TargetGroupArn": "'"$GREEN_TG"'", "Weight": '"$W_GREEN"'}
+                    ]
+                  }
+                }]'
+              echo "Rule $RULE_ARN updated with both TGs."
+            else
+              echo "Rule $RULE_ARN already has both TGs registered."
+            fi
+          done
+
       # --- Backend: blue/green switch --------------------------------------
       - name: Determine active slot and deploy to inactive
         id: bluegreen
@@ -237,9 +287,10 @@ jobs:
           set -euo pipefail
 
           # 1. Query the current listener rule to find which TG is active
+          #    With weighted forward, TargetGroupArn is at ForwardConfig level, not Action level
           CURRENT_TG=$(aws elbv2 describe-rules \
             --rule-arns "$API_RULE" \
-            --query 'Rules[0].Actions[0].TargetGroupArn' \
+            --query 'Rules[0].Actions[0].ForwardConfig.TargetGroups[?Weight>`0`].TargetGroupArn | [0]' \
             --output text)
           echo "Currently active TG: $CURRENT_TG"
           echo "previous_active_tg_arn=$CURRENT_TG" >> "$GITHUB_OUTPUT"
