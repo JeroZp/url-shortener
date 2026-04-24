@@ -287,18 +287,47 @@ jobs:
         env:
           API_RULE: ${{ needs.terraform-apply.outputs.backend_api_rule_arn }}
           HEALTH_RULE: ${{ needs.terraform-apply.outputs.backend_health_rule_arn }}
+          BLUE_TG: ${{ needs.terraform-apply.outputs.backend_blue_tg_arn }}
+          GREEN_TG: ${{ needs.terraform-apply.outputs.backend_green_tg_arn }}
           NEW_TG: ${{ steps.bluegreen.outputs.new_active_tg_arn }}
         run: |
           set -euo pipefail
-          echo "Switching API rule to $NEW_TG..."
+
+          # Use weighted forward to keep BOTH target groups associated with the ALB.
+          # The inactive TG gets weight 0 so it receives no traffic but stays registered.
+          if [ "$NEW_TG" = "$GREEN_TG" ]; then
+            ACTIVE_TG="$GREEN_TG"
+            INACTIVE_TG="$BLUE_TG"
+          else
+            ACTIVE_TG="$BLUE_TG"
+            INACTIVE_TG="$GREEN_TG"
+          fi
+
+          echo "Switching API rule to $ACTIVE_TG (keeping $INACTIVE_TG registered with weight 0)..."
           aws elbv2 modify-rule \
             --rule-arn "$API_RULE" \
-            --actions Type=forward,TargetGroupArn="$NEW_TG"
+            --actions '[{
+              "Type": "forward",
+              "ForwardConfig": {
+                "TargetGroups": [
+                  {"TargetGroupArn": "'"$ACTIVE_TG"'", "Weight": 100},
+                  {"TargetGroupArn": "'"$INACTIVE_TG"'", "Weight": 0}
+                ]
+              }
+            }]'
 
-          echo "Switching health rule to $NEW_TG..."
+          echo "Switching health rule to $ACTIVE_TG (keeping $INACTIVE_TG registered with weight 0)..."
           aws elbv2 modify-rule \
             --rule-arn "$HEALTH_RULE" \
-            --actions Type=forward,TargetGroupArn="$NEW_TG"
+            --actions '[{
+              "Type": "forward",
+              "ForwardConfig": {
+                "TargetGroups": [
+                  {"TargetGroupArn": "'"$ACTIVE_TG"'", "Weight": 100},
+                  {"TargetGroupArn": "'"$INACTIVE_TG"'", "Weight": 0}
+                ]
+              }
+            }]'
 
           echo "Traffic switched successfully!"
 
@@ -364,18 +393,45 @@ jobs:
         env:
           API_RULE: ${{ needs.terraform-apply.outputs.backend_api_rule_arn }}
           HEALTH_RULE: ${{ needs.terraform-apply.outputs.backend_health_rule_arn }}
+          BLUE_TG: ${{ needs.terraform-apply.outputs.backend_blue_tg_arn }}
+          GREEN_TG: ${{ needs.terraform-apply.outputs.backend_green_tg_arn }}
           PREVIOUS_TG: ${{ needs.deploy.outputs.previous_active_tg_arn }}
         run: |
           set -euo pipefail
-          echo "ROLLBACK: Switching API rule back to $PREVIOUS_TG..."
+
+          if [ "$PREVIOUS_TG" = "$GREEN_TG" ]; then
+            ACTIVE_TG="$GREEN_TG"
+            INACTIVE_TG="$BLUE_TG"
+          else
+            ACTIVE_TG="$BLUE_TG"
+            INACTIVE_TG="$GREEN_TG"
+          fi
+
+          echo "ROLLBACK: Switching API rule back to $ACTIVE_TG (keeping $INACTIVE_TG with weight 0)..."
           aws elbv2 modify-rule \
             --rule-arn "$API_RULE" \
-            --actions Type=forward,TargetGroupArn="$PREVIOUS_TG"
+            --actions '[{
+              "Type": "forward",
+              "ForwardConfig": {
+                "TargetGroups": [
+                  {"TargetGroupArn": "'"$ACTIVE_TG"'", "Weight": 100},
+                  {"TargetGroupArn": "'"$INACTIVE_TG"'", "Weight": 0}
+                ]
+              }
+            }]'
 
-          echo "ROLLBACK: Switching health rule back to $PREVIOUS_TG..."
+          echo "ROLLBACK: Switching health rule back to $ACTIVE_TG (keeping $INACTIVE_TG with weight 0)..."
           aws elbv2 modify-rule \
             --rule-arn "$HEALTH_RULE" \
-            --actions Type=forward,TargetGroupArn="$PREVIOUS_TG"
+            --actions '[{
+              "Type": "forward",
+              "ForwardConfig": {
+                "TargetGroups": [
+                  {"TargetGroupArn": "'"$ACTIVE_TG"'", "Weight": 100},
+                  {"TargetGroupArn": "'"$INACTIVE_TG"'", "Weight": 0}
+                ]
+              }
+            }]'
 
           echo "Traffic reverted to previous slot!"
 
