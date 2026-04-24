@@ -26,6 +26,7 @@ coverage/
 !terraform.tfvars.example
 .terraform.lock.hcl
 crash.log
+terraform.tfvars
 
 # IDEs
 .vscode/
@@ -45,3 +46,7 @@ test-results/
 
 # OS
 Thumbs.db
+
+venv/
+node_modules/
+ar.txt

@@ -1,0 +1,348 @@
+name: CD Staging
+
+# -----------------------------------------------------------------------------
+# Continuous Deployment pipeline to STAGING (environment 1 of 2).
+#
+# Stages (per rubric):
+#   1. Build & push Docker images to ECR.
+#   2. IaC — terraform apply over infra/environments/staging.
+#   3. App deploy — update-service on ECS forcing a new deployment.
+#   4. Pre-prod tests — smoke tests against the public ALB DNS.
+#   5. Automatic rollback — if any smoke test fails, revert to the task
+#      definition that was active before this deploy.
+#
+# Prerequisites (GitHub repo secrets):
+#   AWS_ACCESS_KEY_ID        Learner Lab temporary credential
+#   AWS_SECRET_ACCESS_KEY    Learner Lab temporary credential
+#   AWS_SESSION_TOKEN        Learner Lab temporary credential
+#   LAB_ROLE_ARN             ARN of the preexisting LabRole
+#   DB_PASSWORD              DB password (must match the Secrets Manager secret)
+#   DB_PASSWORD_SECRET_ARN   ARN of the Secrets Manager secret injected into ECS
+#
+# Learner Lab note: credentials are temporary (~4h). Refresh them with
+# scripts/refresh-aws-creds.ps1 at the start of each working session.
+# -----------------------------------------------------------------------------
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (default: commit SHA)"
+        required: false
+        type: string
+
+concurrency:
+  group: cd-staging
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  ECR_BACKEND_REPO: url-shortener-backend
+  ECR_FRONTEND_REPO: url-shortener-frontend
+  TF_WORKING_DIR: infra/environments/staging
+  TF_VERSION: "1.9.8"
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1) Build & push
+  # ---------------------------------------------------------------------------
+  build-and-push:
+    name: Build & push images
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+      ecr_backend_url: ${{ steps.meta.outputs.backend_url }}
+      ecr_frontend_url: ${{ steps.meta.outputs.frontend_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Ensure ECR repositories exist
+        run: |
+          set -euo pipefail
+          for repo in "$ECR_BACKEND_REPO" "$ECR_FRONTEND_REPO"; do
+            if ! aws ecr describe-repositories --repository-names "$repo" >/dev/null 2>&1; then
+              echo "Creating ECR repository: $repo"
+              aws ecr create-repository \
+                --repository-name "$repo" \
+                --image-scanning-configuration scanOnPush=true \
+                --image-tag-mutability MUTABLE
+            fi
+          done
+
+      - name: Compute image metadata
+        id: meta
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.image_tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="${GITHUB_SHA::12}"
+          fi
+          REGISTRY="${{ steps.ecr.outputs.registry }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "backend_url=$REGISTRY/$ECR_BACKEND_REPO" >> "$GITHUB_OUTPUT"
+          echo "frontend_url=$REGISTRY/$ECR_FRONTEND_REPO" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.backend_url }}:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.backend_url }}:staging-latest
+          cache-from: type=gha,scope=backend-staging
+          cache-to: type=gha,scope=backend-staging,mode=max
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.frontend_url }}:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.frontend_url }}:staging-latest
+          cache-from: type=gha,scope=frontend-staging
+          cache-to: type=gha,scope=frontend-staging,mode=max
+
+  # ---------------------------------------------------------------------------
+  # 2) IaC: terraform apply
+  # ---------------------------------------------------------------------------
+  terraform-apply:
+    name: Terraform apply (staging)
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    outputs:
+      alb_dns: ${{ steps.outputs.outputs.alb_dns }}
+      cluster_name: ${{ steps.outputs.outputs.cluster_name }}
+      backend_service: ${{ steps.outputs.outputs.backend_service }}
+      frontend_service: ${{ steps.outputs.outputs.frontend_service }}
+      backend_family: ${{ steps.outputs.outputs.backend_family }}
+      frontend_family: ${{ steps.outputs.outputs.frontend_family }}
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform apply
+        env:
+          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+          TF_VAR_lab_role_arn: ${{ secrets.LAB_ROLE_ARN }}
+          TF_VAR_ecr_backend_url: ${{ needs.build-and-push.outputs.ecr_backend_url }}
+          TF_VAR_ecr_frontend_url: ${{ needs.build-and-push.outputs.ecr_frontend_url }}
+          TF_VAR_image_tag: ${{ needs.build-and-push.outputs.image_tag }}
+          TF_VAR_db_password_secret_arn: ${{ secrets.DB_PASSWORD_SECRET_ARN }}
+          TF_VAR_tf_state_bucket: url-shortener-tfstate-eafit-g3-v1
+        run: terraform apply -auto-approve -input=false
+
+      - name: Export terraform outputs
+        id: outputs
+        run: |
+          set -euo pipefail
+          echo "alb_dns=$(terraform output -raw alb_dns_name)" >> "$GITHUB_OUTPUT"
+          echo "cluster_name=$(terraform output -raw ecs_cluster_name)" >> "$GITHUB_OUTPUT"
+          echo "backend_service=$(terraform output -raw backend_service_name)" >> "$GITHUB_OUTPUT"
+          echo "frontend_service=$(terraform output -raw frontend_service_name)" >> "$GITHUB_OUTPUT"
+          echo "backend_family=$(terraform output -raw backend_task_definition_family)" >> "$GITHUB_OUTPUT"
+          echo "frontend_family=$(terraform output -raw frontend_task_definition_family)" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # 3) Deploy: force a new deployment on ECS.
+  #    We record the previous task definition to enable rollback.
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy to ECS
+    needs: [build-and-push, terraform-apply]
+    runs-on: ubuntu-latest
+    outputs:
+      previous_backend_td: ${{ steps.previous.outputs.backend_td }}
+      previous_frontend_td: ${{ steps.previous.outputs.frontend_td }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Record previous task definitions (for rollback)
+        id: previous
+        env:
+          CLUSTER: ${{ needs.terraform-apply.outputs.cluster_name }}
+          BACKEND_SVC: ${{ needs.terraform-apply.outputs.backend_service }}
+          FRONTEND_SVC: ${{ needs.terraform-apply.outputs.frontend_service }}
+        run: |
+          set -euo pipefail
+          BACK=$(aws ecs describe-services \
+            --cluster "$CLUSTER" --services "$BACKEND_SVC" \
+            --query 'services[0].taskDefinition' --output text)
+          FRONT=$(aws ecs describe-services \
+            --cluster "$CLUSTER" --services "$FRONTEND_SVC" \
+            --query 'services[0].taskDefinition' --output text)
+          echo "Previous backend TD:  $BACK"
+          echo "Previous frontend TD: $FRONT"
+          echo "backend_td=$BACK" >> "$GITHUB_OUTPUT"
+          echo "frontend_td=$FRONT" >> "$GITHUB_OUTPUT"
+
+      - name: Force new deployment (backend)
+        env:
+          CLUSTER: ${{ needs.terraform-apply.outputs.cluster_name }}
+          SERVICE: ${{ needs.terraform-apply.outputs.backend_service }}
+          FAMILY: ${{ needs.terraform-apply.outputs.backend_family }}
+        run: |
+          aws ecs update-service \
+            --cluster "$CLUSTER" \
+            --service "$SERVICE" \
+            --task-definition "$FAMILY" \
+            --force-new-deployment >/dev/null
+
+      - name: Force new deployment (frontend)
+        env:
+          CLUSTER: ${{ needs.terraform-apply.outputs.cluster_name }}
+          SERVICE: ${{ needs.terraform-apply.outputs.frontend_service }}
+          FAMILY: ${{ needs.terraform-apply.outputs.frontend_family }}
+        run: |
+          aws ecs update-service \
+            --cluster "$CLUSTER" \
+            --service "$SERVICE" \
+            --task-definition "$FAMILY" \
+            --force-new-deployment >/dev/null
+
+      - name: Wait for services stable
+        env:
+          CLUSTER: ${{ needs.terraform-apply.outputs.cluster_name }}
+          BACKEND_SVC: ${{ needs.terraform-apply.outputs.backend_service }}
+          FRONTEND_SVC: ${{ needs.terraform-apply.outputs.frontend_service }}
+        run: |
+          aws ecs wait services-stable \
+            --cluster "$CLUSTER" \
+            --services "$BACKEND_SVC" "$FRONTEND_SVC"
+
+  # ---------------------------------------------------------------------------
+  # 4) Smoke tests (pre-prod)
+  # ---------------------------------------------------------------------------
+  smoke-tests:
+    name: Smoke tests (staging)
+    needs: [terraform-apply, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install smoke test dependencies
+        working-directory: tests/smoke
+        run: pip install -r requirements.txt
+
+      - name: Run smoke tests
+        working-directory: tests/smoke
+        env:
+          BASE_URL: http://${{ needs.terraform-apply.outputs.alb_dns }}
+          SMOKE_BOOT_WAIT: "48" # 48 x 5s = 4 min waiting on /health
+        run: pytest -v --tb=short
+
+      - name: Print ALB URL
+        if: always()
+        run: echo "Staging ALB → http://${{ needs.terraform-apply.outputs.alb_dns }}"
+
+  # ---------------------------------------------------------------------------
+  # 5) Automatic rollback if smoke tests fail
+  # ---------------------------------------------------------------------------
+  rollback:
+    name: Automatic rollback
+    needs: [terraform-apply, deploy, smoke-tests]
+    if: failure() && needs.deploy.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Rollback backend to previous task definition
+        env:
+          CLUSTER: ${{ needs.terraform-apply.outputs.cluster_name }}
+          SERVICE: ${{ needs.terraform-apply.outputs.backend_service }}
+          PREVIOUS_TD: ${{ needs.deploy.outputs.previous_backend_td }}
+        run: |
+          echo "Rolling back $SERVICE to $PREVIOUS_TD"
+          aws ecs update-service \
+            --cluster "$CLUSTER" \
+            --service "$SERVICE" \
+            --task-definition "$PREVIOUS_TD" \
+            --force-new-deployment >/dev/null
+
+      - name: Rollback frontend to previous task definition
+        env:
+          CLUSTER: ${{ needs.terraform-apply.outputs.cluster_name }}
+          SERVICE: ${{ needs.terraform-apply.outputs.frontend_service }}
+          PREVIOUS_TD: ${{ needs.deploy.outputs.previous_frontend_td }}
+        run: |
+          echo "Rolling back $SERVICE to $PREVIOUS_TD"
+          aws ecs update-service \
+            --cluster "$CLUSTER" \
+            --service "$SERVICE" \
+            --task-definition "$PREVIOUS_TD" \
+            --force-new-deployment >/dev/null
+
+      - name: Wait for rollback stable
+        env:
+          CLUSTER: ${{ needs.terraform-apply.outputs.cluster_name }}
+          BACKEND_SVC: ${{ needs.terraform-apply.outputs.backend_service }}
+          FRONTEND_SVC: ${{ needs.terraform-apply.outputs.frontend_service }}
+        run: |
+          aws ecs wait services-stable \
+            --cluster "$CLUSTER" \
+            --services "$BACKEND_SVC" "$FRONTEND_SVC"
+
+      - name: Fail the workflow
+        run: |
+          echo "::error::Smoke tests failed. Services rolled back to previous task definitions."
+          exit 1
