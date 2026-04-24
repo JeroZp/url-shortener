@@ -117,9 +117,9 @@ resource "aws_lb_listener_rule" "backend_api" {
     }
   }
 
-#  lifecycle {
-#    ignore_changes = [action]  
-#  }      
+  lifecycle {
+    ignore_changes = [action]  
+  }      
 }
 
 resource "aws_lb_listener_rule" "backend_health" {
@@ -147,7 +147,7 @@ resource "aws_lb_listener_rule" "backend_health" {
   }
 
 
-#  lifecycle {
-#    ignore_changes = [action]
-#  }
+  lifecycle {
+    ignore_changes = [action]
+  }
 }
