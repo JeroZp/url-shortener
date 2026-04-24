@@ -104,13 +104,22 @@ resource "aws_lb_listener_rule" "backend_api" {
   }
 
   action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.backend_blue.arn
+    type = "forward"
+    forward {
+      target_group {
+        arn    = aws_lb_target_group.backend_blue.arn
+        weight = 100
+      }
+      target_group {
+        arn    = aws_lb_target_group.backend_green.arn
+        weight = 0
+      }
+    }
   }
 
-    lifecycle {
-      ignore_changes = [action]  
-    }      
+  lifecycle {
+    ignore_changes = [action]  
+  }      
 }
 
 resource "aws_lb_listener_rule" "backend_health" {
@@ -124,9 +133,19 @@ resource "aws_lb_listener_rule" "backend_health" {
   }
 
   action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.backend_blue.arn
+    type = "forward"
+    forward {
+      target_group {
+        arn    = aws_lb_target_group.backend_blue.arn
+        weight = 100
+      }
+      target_group {
+        arn    = aws_lb_target_group.backend_green.arn
+        weight = 0
+      }
+    }
   }
+
 
   lifecycle {
     ignore_changes = [action]
