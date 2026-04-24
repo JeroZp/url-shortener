@@ -1,0 +1,12 @@
+tf_state_bucket = "url-shortener-tf-state"
+
+lab_role_arn = "arn:aws:iam::ACCOUNT_ID:role/LabRole"
+
+ecr_backend_url  = "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/url-shortener-backend"
+ecr_frontend_url = "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/url-shortener-frontend"
+
+image_tag = "latest"
+
+db_password = "Ejemplo1234!"
+
+db_password_secret_arn = "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret/url-shortener-production-db"

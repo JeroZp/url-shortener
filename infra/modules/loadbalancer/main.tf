@@ -107,6 +107,10 @@ resource "aws_lb_listener_rule" "backend_api" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.backend_blue.arn
   }
+
+    lifecycle {
+      ignore_changes = [action]  
+    }      
 }
 
 resource "aws_lb_listener_rule" "backend_health" {

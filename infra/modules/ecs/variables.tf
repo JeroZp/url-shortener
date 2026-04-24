@@ -48,6 +48,12 @@ variable "backend_blue_target_group_arn" {
   type = string
 }
 
+variable "backend_green_target_group_arn" {
+  description = "Green target group ARN for blue/green backend deployments"
+  type        = string
+  default     = ""
+}
+
 variable "frontend_target_group_arn" {
   type = string
 }

@@ -176,6 +176,39 @@ resource "aws_ecs_service" "backend" {
   })
 }
 
+resource "aws_ecs_service" "backend_green" {
+  count           = var.backend_green_target_group_arn != "" ? 1 : 0
+  name            = "${var.project}-${var.environment}-backend-green"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.backend.arn
+  desired_count   = var.backend_desired_count
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets          = var.public_subnet_ids
+    security_groups  = [var.ecs_backend_security_group_id]
+    assign_public_ip = true
+  }
+
+  load_balancer {
+    target_group_arn = var.backend_green_target_group_arn
+    container_name   = "backend"
+    container_port   = 8000
+  }
+
+  deployment_minimum_healthy_percent = 50
+  deployment_maximum_percent         = 200
+
+  lifecycle {
+    ignore_changes = [task_definition, desired_count]
+  }
+
+  tags = merge(var.tags, {
+    Name = "${var.project}-${var.environment}-backend-green-service"
+    Slot = "green"
+  })
+}
+
 resource "aws_ecs_service" "frontend" {
   name            = "${var.project}-${var.environment}-frontend"
   cluster         = aws_ecs_cluster.main.id

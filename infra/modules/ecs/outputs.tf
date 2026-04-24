@@ -31,3 +31,8 @@ output "frontend_task_definition_family" {
   description = "Frontend task definition family (for update-service pointing at the latest revision)"
   value       = aws_ecs_task_definition.frontend.family
 }
+
+output "backend_green_service_name" {
+  description = "Green backend service name (empty if blue/green is not enabled)"
+  value       = length(aws_ecs_service.backend_green) > 0 ? aws_ecs_service.backend_green[0].name : ""
+}
