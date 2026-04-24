@@ -1,0 +1,297 @@
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment for the rollback"
+        required: true
+        type: choice
+        options:
+          - production
+          - staging
+        default: production
+
+      image_tag:
+        description: "Image tag to roll back to (e.g. previous, latest)"
+        required: false
+        default: "previous"
+
+      service:
+        description: "Which service to roll back?"
+        required: true
+        type: choice
+        options:
+          - both
+          - backend
+          - frontend
+        default: both
+
+      confirm:
+        description: "Type ROLLBACK to confirm"
+        required: true
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+
+jobs:
+  validate:
+    name: Validate inputs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation word
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "ROLLBACK" ]; then
+            echo "Invalid confirmation. Type exactly: ROLLBACK"
+            exit 1
+          fi
+          echo "Confirmation valid. Starting rollback..."
+          echo "  Environment : ${{ github.event.inputs.environment }}"
+          echo "  Service     : ${{ github.event.inputs.service }}"
+          echo "  Image tag   : ${{ github.event.inputs.image_tag }}"
+          echo "  Triggered by: ${{ github.actor }}"
+
+  # Backend rollback
+  rollback-backend:
+    name: Rollback backend → ${{ github.event.inputs.image_tag }}
+    runs-on: ubuntu-latest
+    needs: validate
+    if: >
+      github.event.inputs.service == 'backend' ||
+      github.event.inputs.service == 'both'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Resolve image tag
+        id: resolve-tag
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ENV_NAME: ${{ github.event.inputs.environment }}
+          INPUT_TAG: ${{ github.event.inputs.image_tag }}
+        run: |
+          CLUSTER="url-shortener-${ENV_NAME}"
+          SERVICE="backend-${ENV_NAME}"
+          REPO="${ECR_REGISTRY}/url-shortener-backend"
+
+          if [ "$INPUT_TAG" = "previous" ]; then
+            # Get the image currently deployed and step back one version
+            CURRENT_TAG=$(aws ecs describe-services \
+              --cluster "$CLUSTER" \
+              --services "$SERVICE" \
+              --query 'services[0].taskDefinition' \
+              --output text | xargs aws ecs describe-task-definition \
+              --query 'taskDefinition.containerDefinitions[0].image' \
+              --output text | cut -d: -f2)
+            echo "Current tag in ECS: $CURRENT_TAG"
+
+            # List images sorted by push date and grab the second-to-last
+            PREVIOUS_TAG=$(aws ecr describe-images \
+              --repository-name url-shortener-backend \
+              --query 'sort_by(imageDetails, &imagePushedAt)[-2].imageTags[0]' \
+              --output text)
+            echo "Previous tag found: $PREVIOUS_TAG"
+            IMAGE="${REPO}:${PREVIOUS_TAG}"
+          else
+            IMAGE="${REPO}:${INPUT_TAG}"
+          fi
+
+          echo "image=${IMAGE}" >> $GITHUB_OUTPUT
+          echo "Rollback image: $IMAGE"
+
+      - name: Fetch current task definition
+        id: get-task-def
+        env:
+          ENV_NAME: ${{ github.event.inputs.environment }}
+        run: |
+          CLUSTER="url-shortener-${ENV_NAME}"
+          SERVICE="backend-${ENV_NAME}"
+
+          TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster "$CLUSTER" \
+            --services "$SERVICE" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF_ARN" \
+            --query 'taskDefinition' \
+            > /tmp/backend-task-def.json
+
+          echo "task_def_arn=${TASK_DEF_ARN}" >> $GITHUB_OUTPUT
+
+      - name: Render new task definition with rollback image
+        id: new-task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: /tmp/backend-task-def.json
+          container-name: backend
+          image: ${{ steps.resolve-tag.outputs.image }}
+
+      - name: Deploy rolled-back task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.new-task-def.outputs.task-definition }}
+          service: backend-${{ github.event.inputs.environment }}
+          cluster: url-shortener-${{ github.event.inputs.environment }}
+          wait-for-service-stability: true
+
+      - name: Health check — backend post-rollback
+        env:
+          ENV_NAME: ${{ github.event.inputs.environment }}
+        run: |
+          ALB_DNS=$(aws elbv2 describe-load-balancers \
+            --names "url-shortener-${ENV_NAME}-alb" \
+            --query 'LoadBalancers[0].DNSName' \
+            --output text)
+
+          echo "Checking backend at http://${ALB_DNS}/health ..."
+          for i in $(seq 1 10); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://${ALB_DNS}/health" || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "Backend returned 200 after rollback."
+              exit 0
+            fi
+            echo "  Attempt $i/10 — status: $STATUS. Waiting 15s..."
+            sleep 15
+          done
+
+          echo "Backend did not recover after rollback."
+          exit 1
+
+  # Frontend rollback
+  rollback-frontend:
+    name: Rollback frontend → ${{ github.event.inputs.image_tag }}
+    runs-on: ubuntu-latest
+    needs: validate
+    if: >
+      github.event.inputs.service == 'frontend' ||
+      github.event.inputs.service == 'both'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Resolve image tag
+        id: resolve-tag
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ENV_NAME: ${{ github.event.inputs.environment }}
+          INPUT_TAG: ${{ github.event.inputs.image_tag }}
+        run: |
+          REPO="${ECR_REGISTRY}/url-shortener-frontend"
+
+          if [ "$INPUT_TAG" = "previous" ]; then
+            PREVIOUS_TAG=$(aws ecr describe-images \
+              --repository-name url-shortener-frontend \
+              --query 'sort_by(imageDetails, &imagePushedAt)[-2].imageTags[0]' \
+              --output text)
+            echo "Previous tag found: $PREVIOUS_TAG"
+            IMAGE="${REPO}:${PREVIOUS_TAG}"
+          else
+            IMAGE="${REPO}:${INPUT_TAG}"
+          fi
+
+          echo "image=${IMAGE}" >> $GITHUB_OUTPUT
+          echo "Rollback image: $IMAGE"
+
+      - name: Fetch current task definition
+        env:
+          ENV_NAME: ${{ github.event.inputs.environment }}
+        run: |
+          CLUSTER="url-shortener-${ENV_NAME}"
+          SERVICE="frontend-${ENV_NAME}"
+
+          TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster "$CLUSTER" \
+            --services "$SERVICE" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF_ARN" \
+            --query 'taskDefinition' \
+            > /tmp/frontend-task-def.json
+
+      - name: Render new task definition with rollback image
+        id: new-task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: /tmp/frontend-task-def.json
+          container-name: frontend
+          image: ${{ steps.resolve-tag.outputs.image }}
+
+      - name: Deploy rolled-back task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.new-task-def.outputs.task-definition }}
+          service: frontend-${{ github.event.inputs.environment }}
+          cluster: url-shortener-${{ github.event.inputs.environment }}
+          wait-for-service-stability: true
+
+      - name: Health check — frontend post-rollback
+        env:
+          ENV_NAME: ${{ github.event.inputs.environment }}
+        run: |
+          ALB_DNS=$(aws elbv2 describe-load-balancers \
+            --names "url-shortener-${ENV_NAME}-alb" \
+            --query 'LoadBalancers[0].DNSName' \
+            --output text)
+
+          echo "Checking frontend at http://${ALB_DNS}/ ..."
+          for i in $(seq 1 10); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://${ALB_DNS}/" || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "Frontend returned 200 after rollback."
+              exit 0
+            fi
+            echo "  Attempt $i/10 — status: $STATUS. Waiting 15s..."
+            sleep 15
+          done
+
+          echo "Frontend did not recover after rollback."
+          exit 1
+
+
+  summary:
+    name: Rollback summary
+    runs-on: ubuntu-latest
+    needs: [rollback-backend, rollback-frontend]
+    if: always()
+    steps:
+      - name: Print summary
+        run: |
+          echo "════════════════════════════════════════"
+          echo "  ROLLBACK COMPLETE"
+          echo "════════════════════════════════════════"
+          echo "  Environment  : ${{ github.event.inputs.environment }}"
+          echo "  Service      : ${{ github.event.inputs.service }}"
+          echo "  Image tag    : ${{ github.event.inputs.image_tag }}"
+          echo "  Triggered by : ${{ github.actor }}"
+          echo "  Timestamp    : $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "════════════════════════════════════════"
